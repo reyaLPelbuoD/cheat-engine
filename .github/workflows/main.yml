@@ -1,0 +1,108 @@
+name: Full Cheat Engine Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    env:
+      CONFIG: Release
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # ---------------------------------------------------------
+    # Install Visual Studio Build Tools (MSBuild + C++)
+    # ---------------------------------------------------------
+    - name: Install Visual Studio Build Tools
+      uses: microsoft/setup-msbuild@v2
+
+    # ---------------------------------------------------------
+    # Install Lazarus + FreePascal
+    # ---------------------------------------------------------
+    - name: Install Lazarus + FPC
+      shell: pwsh
+      run: |
+        $url = "https://mirrors.up.pt/pub/lazarus/releases/Lazarus-3.2-win64.exe"
+        $installer = "$env:RUNNER_TEMP\\lazarus_installer.exe"
+        Invoke-WebRequest -Uri $url -OutFile $installer
+        Start-Process -FilePath $installer -ArgumentList "/VERYSILENT" -Wait
+
+    # ---------------------------------------------------------
+    # Install Windows Driver Kit (WDK)
+    # ---------------------------------------------------------
+    - name: Install Windows Driver Kit
+      shell: pwsh
+      run: |
+        $wdkUrl = "https://go.microsoft.com/fwlink/?linkid=2128854"
+        $wdkInstaller = "$env:RUNNER_TEMP\\wdksetup.exe"
+        Invoke-WebRequest -Uri $wdkUrl -OutFile $wdkInstaller
+        Start-Process -FilePath $wdkInstaller -ArgumentList "/quiet" -Wait
+
+    # ---------------------------------------------------------
+    # Build all Visual Studio .sln files
+    # ---------------------------------------------------------
+    - name: Build all .sln files
+      shell: pwsh
+      run: |
+        Get-ChildItem -Recurse -Filter *.sln | ForEach-Object {
+          Write-Host "Building $($_.FullName)"
+          msbuild $_.FullName /p:Configuration=$env:CONFIG /m
+        }
+
+    # ---------------------------------------------------------
+    # Build Lazarus projects (.lpi)
+    # ---------------------------------------------------------
+    - name: Build Lazarus projects
+      shell: pwsh
+      run: |
+        $lazbuild = "C:\\Lazarus\\lazbuild.exe"
+        Get-ChildItem -Recurse -Filter *.lpi | ForEach-Object {
+          Write-Host "Building Lazarus project $($_.FullName)"
+          & $lazbuild --build-all $($_.FullName)
+        }
+
+    # ---------------------------------------------------------
+    # Build Cheat Engine kernel driver (dbk64)
+    # ---------------------------------------------------------
+    - name: Build dbk64 driver
+      shell: pwsh
+      run: |
+        $driverPath = "Cheat Engine\dbk64"
+        Write-Host "Building driver in $driverPath"
+        msbuild "$driverPath\\dbk64.sln" /p:Configuration=$env:CONFIG /m
+
+    # ---------------------------------------------------------
+    # Build installer (Inno Setup)
+    # ---------------------------------------------------------
+    - name: Install Inno Setup
+      shell: pwsh
+      run: |
+        $url = "https://files.jrsoftware.org/is/6/innosetup-6.2.2.exe"
+        $installer = "$env:RUNNER_TEMP\\is.exe"
+        Invoke-WebRequest -Uri $url -OutFile $installer
+        Start-Process -FilePath $installer -ArgumentList "/VERYSILENT" -Wait
+
+    - name: Build installer
+      shell: pwsh
+      run: |
+        $iss = "Cheat Engine\\installer\\CheatEngine.iss"
+        & "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe" $iss
+
+    # ---------------------------------------------------------
+    # Upload artifacts
+    # ---------------------------------------------------------
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: cheat-engine-full-build
+        path: |
+          Cheat Engine/bin
+          Cheat Engine/installer/Output
+          **/*.exe
+          **/*.dll
