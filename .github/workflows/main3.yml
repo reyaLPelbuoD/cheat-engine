@@ -137,12 +137,13 @@ jobs:
         choco install innosetup --yes --force
 
     # ---------------------------------------------------------
-    # Build installer
+    # Build installer (Chocolatey path)
     # ---------------------------------------------------------
     - name: Build installer
       shell: pwsh
       run: |
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "Cheat Engine\installer\CheatEngine.iss"
+        $iscc = "$env:ChocolateyInstall\lib\innosetup\tools\ISCC.exe"
+        & $iscc "Cheat Engine\installer\CheatEngine.iss"
 
     # ---------------------------------------------------------
     # Upload artifacts
