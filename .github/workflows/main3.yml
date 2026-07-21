@@ -101,15 +101,21 @@ jobs:
         }
 
     # ---------------------------------------------------------
-    # Build Lazarus projects (.lpi)
+    # Build Lazarus projects (.lpi) — Win64 only, correct FPC path
     # ---------------------------------------------------------
     - name: Build Lazarus projects
       shell: pwsh
       run: |
-        $lazbuild = "C:\\Lazarus\\lazbuild.exe"
+        # Add FPC to PATH
+        $fpcPath = "C:\lazarus\fpc\3.2.2\bin\x86_64-win64"
+        $env:PATH = "$fpcPath;$env:PATH"
+
+        $lazbuild = "C:\Lazarus\lazbuild.exe"
+
+        # Build only Win64 targets
         Get-ChildItem -Recurse -Filter *.lpi | ForEach-Object {
           Write-Host "Building Lazarus project $($_.FullName)"
-          & $lazbuild --build-all $($_.FullName)
+          & $lazbuild --cpu=x86_64 --os=win64 --build-all $($_.FullName)
         }
 
     # ---------------------------------------------------------
