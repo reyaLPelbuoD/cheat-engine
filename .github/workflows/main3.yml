@@ -29,8 +29,12 @@ jobs:
         $installer = "$env:RUNNER_TEMP\\lazarus_installer.exe"
         curl.exe -L $url -o $installer
 
+        # Verify EXE header
         $bytes = [System.IO.File]::ReadAllBytes($installer)[0..1]
-        if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { Write-Error "Invalid Lazarus EXE"; exit 1 }
+        if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
+          Write-Error "Invalid Lazarus installer (not an EXE)"
+          exit 1
+        }
 
         Start-Process -FilePath $installer -ArgumentList "/VERYSILENT" -Wait
 
@@ -125,24 +129,12 @@ jobs:
         }
 
     # ---------------------------------------------------------
-    # Install Inno Setup (fixed)
+    # Install Inno Setup (Chocolatey — CI‑safe, stable)
     # ---------------------------------------------------------
     - name: Install Inno Setup
       shell: pwsh
       run: |
-        $url = "https://jrsoftware.org/download.php/is.exe"
-        $installer = "$env:RUNNER_TEMP\\is.exe"
-
-        curl.exe --fail --location --output $installer $url
-
-        # Verify EXE header
-        $bytes = [System.IO.File]::ReadAllBytes($installer)[0..1]
-        if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
-          Write-Error "Inno Setup installer is not a valid EXE"
-          exit 1
-        }
-
-        Start-Process -FilePath $installer -ArgumentList "/VERYSILENT" -Wait
+        choco install innosetup --yes --force
 
     # ---------------------------------------------------------
     # Build installer
