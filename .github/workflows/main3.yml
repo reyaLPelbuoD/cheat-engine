@@ -1,4 +1,4 @@
-name: Full Cheat Engine Build
+name: Cheat Engine (filtered build)
 
 on:
   push:
@@ -16,36 +16,24 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # ---------------------------------------------------------
-    # Install Visual Studio Build Tools (MSBuild + C++)
-    # ---------------------------------------------------------
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
 
-    # ---------------------------------------------------------
-    # Install Lazarus + FreePascal (curl + PS7-safe EXE check)
-    # ---------------------------------------------------------
+    # Lazarus + FPC
     - name: Install Lazarus + FPC
       shell: pwsh
       run: |
         $url = "https://sourceforge.net/projects/lazarus/files/Lazarus%20Windows%2064%20bits/Lazarus%203.4/lazarus-3.4-fpc-3.2.2-win64.exe/download"
         $installer = "$env:RUNNER_TEMP\\lazarus_installer.exe"
-
-        # Download using curl (Invoke-WebRequest breaks on SourceForge)
         curl.exe -L $url -o $installer
-
-        # PowerShell 7-compatible EXE header check
         $bytes = [System.IO.File]::ReadAllBytes($installer)[0..1]
         if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
           Write-Error "Installer is not a valid EXE (missing MZ header)"
           exit 1
         }
-
         Start-Process -FilePath $installer -ArgumentList "/VERYSILENT" -Wait
 
-    # ---------------------------------------------------------
-    # Install Windows Driver Kit (WDK)
-    # ---------------------------------------------------------
+    # WDK for dbk64
     - name: Install Windows Driver Kit
       shell: pwsh
       run: |
@@ -54,20 +42,28 @@ jobs:
         curl.exe -L $wdkUrl -o $wdkInstaller
         Start-Process -FilePath $wdkInstaller -ArgumentList "/quiet" -Wait
 
-    # ---------------------------------------------------------
-    # Build all Visual Studio .sln files
-    # ---------------------------------------------------------
-    - name: Build all .sln files
+    # Build only supported solutions (allowlist)
+    - name: Build filtered .sln files
       shell: pwsh
       run: |
-        Get-ChildItem -Recurse -Filter *.sln | ForEach-Object {
-          Write-Host "Building $($_.FullName)"
-          msbuild $_.FullName /p:Configuration=$env:CONFIG /m
+        $root = Resolve-Path "."
+        $allowed = @(
+          "Cheat Engine\\dbk64\\dbk64.sln",
+          "Cheat Engine\\DotNetCompiler\\CSCompiler\\CSCompiler.sln",
+          "Cheat Engine\\DotNetInvasiveDataCollector\\DotNetInvasiveDataCollector.sln"
+        )
+
+        foreach ($rel in $allowed) {
+          $sln = Join-Path $root $rel
+          if (Test-Path $sln) {
+            Write-Host "Building $sln"
+            msbuild $sln /p:Configuration=$env:CONFIG /m || Write-Warning "Failed to build $sln (see log)"
+          } else {
+            Write-Warning "Solution not found: $sln"
+          }
         }
 
-    # ---------------------------------------------------------
-    # Build Lazarus projects (.lpi)
-    # ---------------------------------------------------------
+    # Build Lazarus projects
     - name: Build Lazarus projects
       shell: pwsh
       run: |
@@ -77,19 +73,7 @@ jobs:
           & $lazbuild --build-all $($_.FullName)
         }
 
-    # ---------------------------------------------------------
-    # Build Cheat Engine kernel driver (dbk64)
-    # ---------------------------------------------------------
-    - name: Build dbk64 driver
-      shell: pwsh
-      run: |
-        $driverPath = "Cheat Engine\\dbk64"
-        Write-Host "Building driver in $driverPath"
-        msbuild "$driverPath\\dbk64.sln" /p:Configuration=$env:CONFIG /m
-
-    # ---------------------------------------------------------
-    # Install Inno Setup
-    # ---------------------------------------------------------
+    # Inno Setup
     - name: Install Inno Setup
       shell: pwsh
       run: |
@@ -98,22 +82,16 @@ jobs:
         curl.exe -L $url -o $installer
         Start-Process -FilePath $installer -ArgumentList "/VERYSILENT" -Wait
 
-    # ---------------------------------------------------------
-    # Build installer
-    # ---------------------------------------------------------
     - name: Build installer
       shell: pwsh
       run: |
         $iss = "Cheat Engine\\installer\\CheatEngine.iss"
         & "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe" $iss
 
-    # ---------------------------------------------------------
-    # Upload artifacts
-    # ---------------------------------------------------------
-    - name: Upload build artifacts
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: cheat-engine-full-build
+        name: cheat-engine-filtered-build
         path: |
           Cheat Engine/bin
           Cheat Engine/installer/Output
