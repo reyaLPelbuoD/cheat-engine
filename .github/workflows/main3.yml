@@ -129,21 +129,32 @@ jobs:
         }
 
     # ---------------------------------------------------------
-    # Install Inno Setup QuickStart Pack (includes ISCC.exe)
+    # Install ISCC.exe (official Inno Setup compiler)
     # ---------------------------------------------------------
-    - name: Install Inno Setup
+    - name: Install Inno Setup Compiler
       shell: pwsh
       run: |
-        choco install innosetup-quickstart --yes --force
+        $url = "https://github.com/jrsoftware/issrc/raw/master/Output/ISCC.exe"
+        $iscc = "$env:RUNNER_TEMP\\ISCC.exe"
+
+        curl.exe --fail --location --output $iscc $url
+
+        # Verify EXE header (MZ)
+        $bytes = [System.IO.File]::ReadAllBytes($iscc)[0..1]
+        if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
+          Write-Error "ISCC.exe is not a valid EXE"
+          exit 1
+        }
+
+        echo "ISCC=$iscc" >> $env:GITHUB_ENV
 
     # ---------------------------------------------------------
-    # Build installer (QuickStart Pack path)
+    # Build installer
     # ---------------------------------------------------------
     - name: Build installer
       shell: pwsh
       run: |
-        $iscc = "$env:ChocolateyInstall\lib\innosetup-quickstart\tools\ISCC.exe"
-        & $iscc "Cheat Engine\installer\CheatEngine.iss"
+        & $env:ISCC "Cheat Engine\installer\CheatEngine.iss"
 
     # ---------------------------------------------------------
     # Upload artifacts
