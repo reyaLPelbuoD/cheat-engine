@@ -23,7 +23,7 @@ jobs:
       uses: microsoft/setup-msbuild@v2
 
     # ---------------------------------------------------------
-    # Install Lazarus + FreePascal (curl fix)
+    # Install Lazarus + FreePascal (curl + PS7-safe EXE check)
     # ---------------------------------------------------------
     - name: Install Lazarus + FPC
       shell: pwsh
@@ -31,11 +31,11 @@ jobs:
         $url = "https://sourceforge.net/projects/lazarus/files/Lazarus%20Windows%2064%20bits/Lazarus%203.4/lazarus-3.4-fpc-3.2.2-win64.exe/download"
         $installer = "$env:RUNNER_TEMP\\lazarus_installer.exe"
 
-        # Use curl instead of Invoke-WebRequest to avoid HTML downloads
+        # Download using curl (Invoke-WebRequest breaks on SourceForge)
         curl.exe -L $url -o $installer
 
-        # Verify EXE header (optional but recommended)
-        $bytes = Get-Content $installer -Encoding Byte -TotalCount 2
+        # PowerShell 7-compatible EXE header check
+        $bytes = [System.IO.File]::ReadAllBytes($installer)[0..1]
         if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
           Write-Error "Installer is not a valid EXE (missing MZ header)"
           exit 1
