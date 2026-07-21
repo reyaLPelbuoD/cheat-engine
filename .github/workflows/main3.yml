@@ -129,20 +129,20 @@ jobs:
         }
 
     # ---------------------------------------------------------
-    # Install Inno Setup (Chocolatey — CI‑safe, stable)
+    # Install Inno Setup QuickStart Pack (includes ISCC.exe)
     # ---------------------------------------------------------
     - name: Install Inno Setup
       shell: pwsh
       run: |
-        choco install innosetup --yes --force
+        choco install innosetup-quickstart --yes --force
 
     # ---------------------------------------------------------
-    # Build installer (Chocolatey path)
+    # Build installer (QuickStart Pack path)
     # ---------------------------------------------------------
     - name: Build installer
       shell: pwsh
       run: |
-        $iscc = "$env:ChocolateyInstall\lib\innosetup\tools\ISCC.exe"
+        $iscc = "$env:ChocolateyInstall\lib\innosetup-quickstart\tools\ISCC.exe"
         & $iscc "Cheat Engine\installer\CheatEngine.iss"
 
     # ---------------------------------------------------------
