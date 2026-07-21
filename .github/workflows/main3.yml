@@ -50,31 +50,46 @@ jobs:
         Start-Process -FilePath $wdkInstaller -ArgumentList "/quiet" -Wait
 
     # ---------------------------------------------------------
-    # Auto‑filter and build .sln files
+    # Auto‑filter and build .sln files (deny‑list)
     # ---------------------------------------------------------
     - name: Auto‑filter and build .sln files
       shell: pwsh
       run: |
+        # These projects cannot be built on GitHub Actions
+        $deny = @(
+          "CUDA pointerscan",
+          "Direct x mess",
+          "DotNetCompiler",
+          "DotNetDataCollector",
+          "DotNetInvasiveDataCollector",
+          "Java\\CEJVMTI",
+          "lua53\\lua53\\vs2013",
+          "MonoDataCollector",
+          "plugin\\c# template",
+          "plugin\\example-c",
+          "plugin\\QWS",
+          "tcclib\\win32\\tcc",
+          "lua\\mak.vs2005",
+          "lua\\mak.vs2008",
+          "ultimap2",
+          "DBKKernel"
+        )
+
         $solutions = Get-ChildItem -Recurse -Filter *.sln
         $buildable = @()
 
         foreach ($sln in $solutions) {
-          Write-Host "Testing $($sln.FullName)"
+          $path = $sln.FullName
 
-          $result = msbuild $sln.FullName /t:ValidateSolutionConfiguration /p:Configuration=$env:CONFIG /m 2>&1
-
-          if ($result -match "MSB3644" -or
-              $result -match "MSB8036" -or
-              $result -match "MSB8020" -or
-              $result -match "project file.*not found" -or
-              $result -match "NETSDK1004") {
-
-            Write-Warning "Skipping unsupported solution: $($sln.FullName)"
-            continue
+          foreach ($bad in $deny) {
+            if ($path -like "*$bad*") {
+              Write-Warning "Skipping legacy/unsupported solution: $path"
+              continue 2
+            }
           }
 
-          Write-Host "✓ Marked as buildable: $($sln.FullName)"
-          $buildable += $sln.FullName
+          Write-Host "✓ Marked as buildable: $path"
+          $buildable += $path
         }
 
         Write-Host "=== Buildable solutions ==="
