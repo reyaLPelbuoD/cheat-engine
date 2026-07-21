@@ -20,21 +20,17 @@ jobs:
       uses: microsoft/setup-msbuild@v2
 
     # ---------------------------------------------------------
-    # Install Lazarus + FPC (curl + PS7-safe EXE check)
+    # Install Lazarus + FPC
     # ---------------------------------------------------------
     - name: Install Lazarus + FPC
       shell: pwsh
       run: |
         $url = "https://sourceforge.net/projects/lazarus/files/Lazarus%20Windows%2064%20bits/Lazarus%203.4/lazarus-3.4-fpc-3.2.2-win64.exe/download"
         $installer = "$env:RUNNER_TEMP\\lazarus_installer.exe"
-
         curl.exe -L $url -o $installer
 
         $bytes = [System.IO.File]::ReadAllBytes($installer)[0..1]
-        if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
-          Write-Error "Installer is not a valid EXE (missing MZ header)"
-          exit 1
-        }
+        if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { Write-Error "Invalid EXE"; exit 1 }
 
         Start-Process -FilePath $installer -ArgumentList "/VERYSILENT" -Wait
 
@@ -55,7 +51,6 @@ jobs:
     - name: Auto‑filter and build .sln files
       shell: pwsh
       run: |
-        # These projects cannot be built on GitHub Actions
         $deny = @(
           "CUDA pointerscan",
           "Direct x mess",
@@ -80,20 +75,15 @@ jobs:
 
         foreach ($sln in $solutions) {
           $path = $sln.FullName
-
           foreach ($bad in $deny) {
             if ($path -like "*$bad*") {
-              Write-Warning "Skipping legacy/unsupported solution: $path"
+              Write-Warning "Skipping unsupported SLN: $path"
               continue 2
             }
           }
-
-          Write-Host "✓ Marked as buildable: $path"
+          Write-Host "✓ SLN buildable: $path"
           $buildable += $path
         }
-
-        Write-Host "=== Buildable solutions ==="
-        $buildable | ForEach-Object { Write-Host $_ }
 
         foreach ($sln in $buildable) {
           Write-Host "Building $sln"
@@ -101,21 +91,37 @@ jobs:
         }
 
     # ---------------------------------------------------------
-    # Build Lazarus projects (.lpi) — Win64 only, correct FPC path
+    # Build Lazarus projects (.lpi) — Win64 only + deny‑list
     # ---------------------------------------------------------
     - name: Build Lazarus projects
       shell: pwsh
       run: |
         # Add FPC to PATH
-        $fpcPath = "C:\lazarus\fpc\3.2.2\bin\x86_64-win64"
-        $env:PATH = "$fpcPath;$env:PATH"
+        $env:PATH = "C:\lazarus\fpc\3.2.2\bin\x86_64-win64;$env:PATH"
 
         $lazbuild = "C:\Lazarus\lazbuild.exe"
 
-        # Build only Win64 targets
+        # Lazarus deny‑list (Android, Win32-only, ARM, etc.)
+        $denyLPI = @(
+          "cecore.lpi",                # Android ARM
+          "ceregreset.lpi",            # Win32 only
+          "Kernelmoduleunloader.lpi",  # Win32 only
+          "standalonephase2.lpi",      # Win32 only
+          "speedhack.lpi"              # Win32 only
+        )
+
         Get-ChildItem -Recurse -Filter *.lpi | ForEach-Object {
-          Write-Host "Building Lazarus project $($_.FullName)"
-          & $lazbuild --cpu=x86_64 --os=win64 --build-all $($_.FullName)
+          $path = $_.FullName
+
+          foreach ($bad in $denyLPI) {
+            if ($path -like "*$bad*") {
+              Write-Warning "Skipping unsupported LPI: $path"
+              continue 2
+            }
+          }
+
+          Write-Host "✓ LPI buildable: $path"
+          & $lazbuild --cpu=x86_64 --os=win64 --build-all $path
         }
 
     # ---------------------------------------------------------
@@ -135,8 +141,7 @@ jobs:
     - name: Build installer
       shell: pwsh
       run: |
-        $iss = "Cheat Engine\\installer\\CheatEngine.iss"
-        & "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe" $iss
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "Cheat Engine\installer\CheatEngine.iss"
 
     # ---------------------------------------------------------
     # Upload artifacts
