@@ -1,4 +1,4 @@
-name: Cheat Engine (auto‑filtered full build)
+name: Cheat Engine (portable build)
 
 on:
   push:
@@ -29,12 +29,8 @@ jobs:
         $installer = "$env:RUNNER_TEMP\\lazarus_installer.exe"
         curl.exe -L $url -o $installer
 
-        # Verify EXE header
         $bytes = [System.IO.File]::ReadAllBytes($installer)[0..1]
-        if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
-          Write-Error "Invalid Lazarus installer (not an EXE)"
-          exit 1
-        }
+        if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { exit 1 }
 
         Start-Process -FilePath $installer -ArgumentList "/VERYSILENT" -Wait
 
@@ -52,7 +48,7 @@ jobs:
     # ---------------------------------------------------------
     # Auto‑filter and build .sln files (deny‑list)
     # ---------------------------------------------------------
-    - name: Auto‑filter and build .sln files
+    - name: Build Visual Studio projects
       shell: pwsh
       run: |
         $deny = @(
@@ -74,24 +70,12 @@ jobs:
           "DBKKernel"
         )
 
-        $solutions = Get-ChildItem -Recurse -Filter *.sln
-        $buildable = @()
-
-        foreach ($sln in $solutions) {
-          $path = $sln.FullName
+        Get-ChildItem -Recurse -Filter *.sln | ForEach-Object {
+          $path = $_.FullName
           foreach ($bad in $deny) {
-            if ($path -like "*$bad*") {
-              Write-Warning "Skipping unsupported SLN: $path"
-              continue 2
-            }
+            if ($path -like "*$bad*") { continue 2 }
           }
-          Write-Host "✓ SLN buildable: $path"
-          $buildable += $path
-        }
-
-        foreach ($sln in $buildable) {
-          Write-Host "Building $sln"
-          msbuild $sln /p:Configuration=$env:CONFIG /m
+          msbuild $path /p:Configuration=$env:CONFIG /m
         }
 
     # ---------------------------------------------------------
@@ -100,72 +84,46 @@ jobs:
     - name: Build Lazarus projects
       shell: pwsh
       run: |
-        # Add FPC to PATH
         $env:PATH = "C:\lazarus\fpc\3.2.2\bin\x86_64-win64;$env:PATH"
-
         $lazbuild = "C:\Lazarus\lazbuild.exe"
 
-        # Lazarus deny‑list (Android, Win32-only, ARM, etc.)
         $denyLPI = @(
-          "cecore.lpi",                # Android ARM
-          "ceregreset.lpi",            # Win32 only
-          "Kernelmoduleunloader.lpi",  # Win32 only
-          "standalonephase2.lpi",      # Win32 only
-          "speedhack.lpi"              # Win32 only
+          "cecore.lpi",
+          "ceregreset.lpi",
+          "Kernelmoduleunloader.lpi",
+          "standalonephase2.lpi",
+          "speedhack.lpi"
         )
 
         Get-ChildItem -Recurse -Filter *.lpi | ForEach-Object {
           $path = $_.FullName
-
           foreach ($bad in $denyLPI) {
-            if ($path -like "*$bad*") {
-              Write-Warning "Skipping unsupported LPI: $path"
-              continue 2
-            }
+            if ($path -like "*$bad*") { continue 2 }
           }
-
-          Write-Host "✓ LPI buildable: $path"
           & $lazbuild --cpu=x86_64 --os=win64 --build-all $path
         }
 
     # ---------------------------------------------------------
-    # Install ISCC.exe (official Inno Setup compiler)
+    # Create portable ZIP
     # ---------------------------------------------------------
-    - name: Install Inno Setup Compiler
+    - name: Create portable ZIP
       shell: pwsh
       run: |
-        $url = "https://github.com/jrsoftware/issrc/raw/master/Output/ISCC.exe"
-        $iscc = "$env:RUNNER_TEMP\\ISCC.exe"
+        $out = "$env:RUNNER_TEMP\\CheatEnginePortable"
+        New-Item -ItemType Directory -Path $out | Out-Null
 
-        curl.exe --fail --location --output $iscc $url
+        Copy-Item -Recurse -Force "Cheat Engine\bin" $out
 
-        # Verify EXE header (MZ)
-        $bytes = [System.IO.File]::ReadAllBytes($iscc)[0..1]
-        if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
-          Write-Error "ISCC.exe is not a valid EXE"
-          exit 1
-        }
+        $zip = "$env:RUNNER_TEMP\\CheatEnginePortable.zip"
+        Compress-Archive -Path $out -DestinationPath $zip -Force
 
-        echo "ISCC=$iscc" >> $env:GITHUB_ENV
-
-    # ---------------------------------------------------------
-    # Build installer
-    # ---------------------------------------------------------
-    - name: Build installer
-      shell: pwsh
-      run: |
-        & $env:ISCC "Cheat Engine\installer\CheatEngine.iss"
+        echo "PORTABLE_ZIP=$zip" >> $env:GITHUB_ENV
 
     # ---------------------------------------------------------
     # Upload artifacts
     # ---------------------------------------------------------
-    - name: Upload build artifacts
+    - name: Upload portable build
       uses: actions/upload-artifact@v4
       with:
-        name: cheat-engine-auto-filtered-build
-        path: |
-          Cheat Engine/bin
-          Cheat Engine/installer/Output
-          **/*.exe
-          **/*.dll
-          **/*.sys
+        name: cheat-engine-portable
+        path: ${{ env.PORTABLE_ZIP }}
