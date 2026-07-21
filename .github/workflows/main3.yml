@@ -30,7 +30,7 @@ jobs:
         curl.exe -L $url -o $installer
 
         $bytes = [System.IO.File]::ReadAllBytes($installer)[0..1]
-        if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { Write-Error "Invalid EXE"; exit 1 }
+        if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { Write-Error "Invalid Lazarus EXE"; exit 1 }
 
         Start-Process -FilePath $installer -ArgumentList "/VERYSILENT" -Wait
 
@@ -125,14 +125,23 @@ jobs:
         }
 
     # ---------------------------------------------------------
-    # Install Inno Setup
+    # Install Inno Setup (fixed)
     # ---------------------------------------------------------
     - name: Install Inno Setup
       shell: pwsh
       run: |
-        $url = "https://files.jrsoftware.org/is/6/innosetup-6.2.2.exe"
+        $url = "https://jrsoftware.org/download.php/is.exe"
         $installer = "$env:RUNNER_TEMP\\is.exe"
-        curl.exe -L $url -o $installer
+
+        curl.exe --fail --location --output $installer $url
+
+        # Verify EXE header
+        $bytes = [System.IO.File]::ReadAllBytes($installer)[0..1]
+        if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
+          Write-Error "Inno Setup installer is not a valid EXE"
+          exit 1
+        }
+
         Start-Process -FilePath $installer -ArgumentList "/VERYSILENT" -Wait
 
     # ---------------------------------------------------------
